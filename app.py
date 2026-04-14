@@ -5,7 +5,7 @@ import json
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv
-from tools import TOOLS_MAP, GROQ_TOOLS# -------------------
+from tools import TOOLS_MAP, GROQ_TOOLS, should_use_web_search, web_search# -------------------
 # PAGE CONFIG
 # -------------------
 
@@ -64,6 +64,39 @@ st.markdown("""
 h1 {color:#00FFFF;}
 h2 {color:#00BFFF;}
 strong {color:#FFD700;}
+
+/* ── Chat message formatting ── */
+[data-testid="stChatMessage"] p {
+    margin-bottom: 0.6rem;
+    line-height: 1.75;
+}
+[data-testid="stChatMessage"] ul,
+[data-testid="stChatMessage"] ol {
+    padding-left: 1.4rem;
+    margin-top: 0.4rem;
+    margin-bottom: 0.8rem;
+}
+[data-testid="stChatMessage"] li {
+    margin-bottom: 0.55rem;
+    line-height: 1.75;
+}
+[data-testid="stChatMessage"] li > ul,
+[data-testid="stChatMessage"] li > ol {
+    margin-top: 0.35rem;
+}
+[data-testid="stChatMessage"] h2,
+[data-testid="stChatMessage"] h3,
+[data-testid="stChatMessage"] h4 {
+    margin-top: 1.1rem;
+    margin-bottom: 0.45rem;
+}
+[data-testid="stChatMessage"] pre {
+    margin-top: 0.6rem;
+    margin-bottom: 0.8rem;
+}
+[data-testid="stChatMessage"] hr {
+    margin: 0.9rem 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,21 +133,26 @@ RESPONSE LENGTH CONTROL:
 - Concept / explanation → structured with headings and bullet points
 - Code request → clean code with comments
 
-FORMATTING:
-- **CRITICAL RULE**: ALWAYS provide answers in concise bullet points. DO NOT use long paragraphs. Keep information structured and easy to digest.
-- Use **bold** for key terms
-- Use headings (##, ###) for structure
-- Use tables for comparisons
-- Use code blocks with language tags for code
+FORMATTING RULES (STRICTLY ENFORCE):
+- **CRITICAL RULE**: ALWAYS answer in clean, structured bullet points. NEVER write long dense paragraphs.
+- Each bullet point MUST be on its own line, with a blank line separating distinct points or sections.
+- Use **bold** for key terms so they stand out.
+- Use `##` or `###` headings to group related points — always leave a blank line before and after a heading.
+- Use numbered lists (1. 2. 3.) for steps or sequences.
+- Use tables for comparisons.
+- Use fenced code blocks (```python) for all code — never inline code for multi-line snippets.
+- Keep each bullet concise — one idea per bullet. If an idea needs sub-details, use an indented sub-bullet (  -).
 """,
     "Python Tutor": """
 You are NexusAI acting as a Python programming tutor.
-- Explain concepts step by step, starting from fundamentals.
-- Make sure to explain concepts strictly using bulleted lists. Avoid blocks of text.
-- Always provide runnable code examples.
-- If the student makes an error, explain WHY it's wrong before giving the fix.
-- Use analogies to make complex topics simple.
-- Track what the student has learned in this conversation and build upon it.
+
+FORMATTING RULES (STRICTLY ENFORCE):
+- Explain every concept using numbered steps or bullet points. NO paragraphs.
+- Leave a blank line between each bullet or step for readability.
+- Always provide a runnable code block (```python) after the explanation.
+- If the student makes an error, use two bullets: one for WHY it is wrong, one for the fix.
+- Use analogies as indented sub-bullets (  -) under the main bullet.
+- Track what the student has learned and build upon it each turn.
 """,
     "Creative Writer": """
 You are NexusAI acting as a creative writing assistant.
@@ -125,11 +163,14 @@ You are NexusAI acting as a creative writing assistant.
 """,
     "Data Scientist": """
 You are NexusAI acting as a data science expert.
-- Help with ML concepts, data analysis, model building, and statistics.
-- IMPORTANT: Return answers and explanations strictly in bullet points instead of paragraphs.
-- Provide code in Python using pandas, numpy, sklearn, pytorch, etc.
-- Explain mathematical concepts with intuition, not just formulas.
-- When debugging, trace through the logic step by step.
+
+FORMATTING RULES (STRICTLY ENFORCE):
+- ALWAYS return answers strictly in bullet points. NO dense paragraphs.
+- Leave a blank line between each bullet point for visual clarity.
+- Provide code in Python using pandas, numpy, sklearn, pytorch in fenced ```python blocks.
+- Explain mathematical concepts with intuition first, formula second — each on its own bullet.
+- When debugging, trace each step as a numbered list.
+- Use `##` headings to separate major sections (e.g., ## Explanation, ## Code, ## Output).
 """
 }
 
@@ -196,7 +237,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("Previous Chats")
+    st.subheader("📋 Previous Chats")
 
     try:
         with open("chat_history.json","r") as f:
@@ -204,12 +245,30 @@ with st.sidebar:
     except:
         chats = []
 
-    for i, chat in enumerate(chats[::-1]):
-
-        title = chat["messages"][0]["content"][:30] if chat["messages"] else "Chat"
-
-        if st.button(title, key=f"chat_{i}"):
-            st.session_state.messages = chat["messages"]
+    # Separate recent (latest 10) and older chats
+    all_chats_reversed = chats[::-1]  # Most recent first
+    recent_chats = all_chats_reversed[:10]  # Latest 10
+    older_chats = all_chats_reversed[10:]   # Older than 10
+    
+    # Display Recent Chats (Latest 10)
+    if recent_chats:
+        st.markdown("### 📌 Recent (Latest 10)")
+        for i, chat in enumerate(recent_chats):
+            title = chat["messages"][0]["content"][:40] if chat["messages"] else "Empty Chat"
+            if st.button(f"💬 {title}", key=f"chat_recent_{i}"):
+                st.session_state.messages = chat["messages"]
+                st.rerun()
+    
+    # Display Older Chats (Collapsible)
+    if older_chats:
+        st.divider()
+        with st.expander(f"📦 Older Chats ({len(older_chats)} more...)", expanded=False):
+            st.markdown(f"**Total older chats: {len(older_chats)}**")
+            for i, chat in enumerate(older_chats):
+                title = chat["messages"][0]["content"][:40] if chat["messages"] else "Empty Chat"
+                if st.button(f"💬 {title}", key=f"chat_older_{i}"):
+                    st.session_state.messages = chat["messages"]
+                    st.rerun()
             
     st.divider()
     st.subheader("⚙️ Advanced Settings")
@@ -235,10 +294,23 @@ if len(st.session_state.messages) == 0:
 # SHOW CHAT
 # -------------------
 
-for msg in st.session_state.messages:
-
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"], unsafe_allow_html=True)
+messages = st.session_state.messages
+if len(messages) > 10:
+    older_messages = messages[:-10]
+    recent_messages = messages[-10:]
+    
+    with st.expander(f"🕰️ View older messages ({len(older_messages)})", expanded=False):
+        for msg in older_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"], unsafe_allow_html=True)
+                
+    for msg in recent_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"], unsafe_allow_html=True)
+else:
+    for msg in messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"], unsafe_allow_html=True)
 
 # -------------------
 # GENERATE RESPONSE FUNCTION (CORE)
@@ -273,6 +345,12 @@ def generate_response(user_input: str, conversation_history: list, role: str = D
         if early_topics:
             context_note = f"\n\n[CONTEXT REMINDER: Earlier in this conversation, the user discussed: {'; '.join(early_topics)}. Keep this in mind for continuity.]"
     
+    # ✨ AUTO WEB SEARCH FOR FACTUAL QUERIES ✨
+    web_context = ""
+    if should_use_web_search(user_input):
+        search_results = web_search(user_input)
+        web_context = f"\n\n[WEB SEARCH RESULTS FOR: '{user_input}']\n{search_results}\n[END SEARCH RESULTS]\n\nUse the above real-time information to provide an accurate, current answer."
+    
     # Calculate current temporal context
     current_time = datetime.now().strftime("%I:%M %p")
     current_date = datetime.now().strftime("%B %d, %Y")
@@ -280,7 +358,16 @@ def generate_response(user_input: str, conversation_history: list, role: str = D
     
     temporal_context = f"\n\n[TIME CONTEXT: Today is {day_of_week}, {current_date}. Current local time is {current_time}. Your knowledge of events after late 2023 is powered by your Web Search tool. Use it for any 2024, 2025, or 2026 current affairs.]"
     
-    full_system = system_prompt + context_note + temporal_context + "\n\nTOOL INSTRUCTIONS:\n1. If you need to use a tool, you MUST use the native JSON tool schema. Do NOT type raw <function> or XML tags in your response.\n2. If no tools are required, reply conversationally without attempting to use a tool."
+    full_system = (
+        system_prompt + context_note + web_context + temporal_context +
+        "\n\nTOOL INSTRUCTIONS (CRITICAL):"
+        "\n1. To call a tool you MUST use the native Groq JSON tool-call schema — NEVER embed tool calls in plain text."
+        "\n2. FORBIDDEN formats (will cause errors):"
+        "\n   - <function=web_search{\"query\": \"...\"}>"
+        "\n   - <function=web_search({\"query\": \"...\"})>"
+        "\n   - Any raw XML / angle-bracket tag in your reply."
+        "\n3. If you are unsure how to call a tool, just answer from your own knowledge instead."
+    )
     
     # --- ENGINE: Groq API ---
     if engine == "Llama 3 (Groq API)":
@@ -326,30 +413,46 @@ def generate_response(user_input: str, conversation_history: list, role: str = D
                 except Exception as e:
                     import ast, re
                     error_str = str(e)
-                    if "failed_generation" in error_str:
+
+                    # ── Detect any hallucinated-tool-call error from Groq ──
+                    is_tool_error = (
+                        "failed_generation" in error_str or
+                        "tool_use_failed" in error_str or
+                        "tool call validation failed" in error_str
+                    )
+
+                    if is_tool_error:
                         dict_str = error_str.split(" - ", 1)[-1]
                         try:
                             error_dict = ast.literal_eval(dict_str)
                             failed_gen = error_dict.get('error', {}).get('failed_generation', '')
-                            
-                            # Try to manually parse hallucinated tags: <function=web_search({"query": "jaipur"})>
-                            match = re.search(r'<function=([a-zA-Z_]+)\((.*?)\)>', failed_gen, flags=re.DOTALL)
+
+                            # ── Broadened regex: handles both formats:
+                            #    <function=name(JSON)>   (old)
+                            #    <function=nameJSON>      (new / no parens)
+                            match = re.search(
+                                r'<function=([a-zA-Z_]+)\(?({.*?})\)?>',
+                                failed_gen,
+                                flags=re.DOTALL
+                            )
                             if match:
-                                fn_name = match.group(1)
+                                fn_name    = match.group(1)
                                 fn_args_str = match.group(2)
                                 try:
                                     fn_args = json.loads(fn_args_str)
-                                    fn_res = TOOLS_MAP.get(fn_name)(**fn_args)
+                                    fn_res  = TOOLS_MAP.get(fn_name, lambda **kw: "Tool not found")(**fn_args)
                                 except Exception as inner_e:
-                                    fn_res = f"Error simulating tool check: {str(inner_e)}"
-                                
-                                # Manually inject the tool message (using a dummy ID since Groq didn't provide one)
+                                    fn_res = f"Error simulating tool: {str(inner_e)}"
+
                                 dummy_id = f"call_{uuid.uuid4().hex[:8]}"
-                                # Provide the assistant message that theoretically triggered the tool
                                 messages.append({
                                     "role": "assistant",
                                     "content": None,
-                                    "tool_calls": [{"id": dummy_id, "type": "function", "function": {"name": fn_name, "arguments": fn_args_str}}]
+                                    "tool_calls": [{
+                                        "id": dummy_id,
+                                        "type": "function",
+                                        "function": {"name": fn_name, "arguments": fn_args_str}
+                                    }]
                                 })
                                 messages.append({
                                     "tool_call_id": dummy_id,
@@ -357,13 +460,14 @@ def generate_response(user_input: str, conversation_history: list, role: str = D
                                     "name": fn_name,
                                     "content": str(fn_res)
                                 })
-                                continue # Loop back and let Groq answer based on the manual execution
+                                continue  # retry loop with tool result injected
                             else:
+                                # No parseable tool call — strip the tag and return whatever text exists
                                 cleaned_gen = re.sub(r'<function=.*', '', failed_gen, flags=re.DOTALL).strip()
                                 if cleaned_gen:
-                                    return f"{cleaned_gen}\n\n*(Note: Formatting error recovered)*"
+                                    return f"{cleaned_gen}\n\n*(Note: Formatting error auto-recovered)*"
                                 else:
-                                    # Fallback: Call again without tools if it failed to format
+                                    # Last resort: call again without tools
                                     response = client.chat.completions.create(
                                         model="llama-3.3-70b-versatile",
                                         messages=messages,

@@ -3,5 +3,11 @@ groq
 python-dotenv
 transformers
 torch
+torchvision
 datasets
 accelerate
+tavily-python
+PyPDF2
+pandas
+requests
+googlesearch-python
