@@ -1,0 +1,12 @@
+[
+    {
+        "event": "meeting",
+        "time": "2024-03-16 10:00 AM",
+        "scheduled_at": "2026-04-14T12:55:00.690868"
+    },
+    {
+        "event": "Meeting",
+        "time": "10:00 AM",
+        "scheduled_at": "2026-04-14T13:05:15.724733"
+    }
+]
